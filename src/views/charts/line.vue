@@ -17,7 +17,7 @@ export default defineComponent({
       this.loading = true;
       // 硬编码股票代码为"512170.SHH"
       request({
-        url: `/balance/find_by_invest/${investCode}`,
+        url: `/balance/find_by_plan/${investCode}`,
         method: 'get'
       }).then(response => {
         // 处理响应数据
