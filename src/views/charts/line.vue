@@ -5,15 +5,85 @@
       <el-button type="success">同步数据</el-button>
     </el-form-item>
   </el-form>
-  <div class="flex gap-2">
-    <el-tag type="primary" @click="findBalanceByPlanCode(1)">A股</el-tag>
-    <el-tag type="success" @click="findBalanceByPlanCode(0)">美股</el-tag>
-  </div>
   <el-table
-    :data="balances"
+    :data="backtrace.response.balances"
     style="width: 100%">
     <el-table-column type="expand">
-      <template v-slot="props">{{ props.row.stocks }}</template>
+      <template v-slot="props">
+        <el-table
+          :data="props.row.stocks"
+          style="width: 100%">
+          <el-table-column
+            prop="date"
+            label="交易日期"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="stock_name"
+            label="名称"
+            width="150">
+          </el-table-column>
+          <el-table-column
+            prop="direction"
+            label="交易方向"
+            :formatter="formatTradeDirection"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="trade_price"
+            label="交易价格"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="trade_quantity"
+            label="交易数量"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="close"
+            label="收盘价"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="quantity"
+            label="持仓数量"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="amount"
+            label="市值"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="put"
+            label="卖出指导价"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="call"
+            label="买入指导价"
+            :formatter="formatMoney"
+            width="100"> </el-table-column>
+          <el-table-column
+            prop="profit"
+            label="利润"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+          <el-table-column
+            prop="profit_rate"
+            label="年化收益"
+            :formatter="formatMoney"
+            width="100">
+          </el-table-column>
+        </el-table>
+      </template>
     </el-table-column>
     <el-table-column
       prop="name"
@@ -70,21 +140,40 @@ import { defineComponent } from 'vue';
 import request from '@/utils/request';
 import { el } from 'element-plus/es/locales.mjs';
 // import Chart from '@/componeents/Charts/KLine.vue';
-
-interface Stock {
-  id?: number;
-  code: string;
-  name: string;
-  note?: string;
-  // 其他股票相关的属性
-}
+import type { TableColumnCtx } from 'element-plus';
 
 interface Balance {
   id: number;
   name: string;
   share: string;
   note?: string;
-  stocks: Stock[]; // 预定义 stocks 属性
+  stocks: BackTrackStock[]; // 预定义 stocks 属性
+}
+
+interface BackTrackStock {
+  date: Date;
+  stock_id: number;
+  stock_name: string;
+  balance_id: number;
+  direction: number;
+  trade_price: number;
+  trade_quantity: number;
+  close: number;
+  quantity: number;
+  amount: number;
+  put: number;
+  call: number;
+  profit: number;
+  profit_rate: number;
+}
+interface BackTraceResponse {
+  balances: Balance[];
+  back_track_stocks: BackTrackStock[];
+}
+// 定义行数据类型
+interface RowData {
+  row: number | string
+  // 可添加其他字段，如 id: number, name: string 等
 }
 
 export default defineComponent({
@@ -99,24 +188,15 @@ export default defineComponent({
           trade_type: 1,
           start_type: 0,
           cash: 200000
-        }
+        },
+        response: {} as BackTraceResponse,
+        tableData: [] as BackTrackStock[],
+        balances: [] as Balance[]
       },
       loading: false
     };
   },
   methods: {
-    findBalanceByPlanCode(planCode) {
-      this.loading = true;
-      // 硬编码股票代码为"512170.SHH"
-      request({
-        url: `/balance/find_by_plan/${planCode}`,
-        method: 'get'
-      }).then(response => {
-        this.balances = response.data || [];
-      }).finally(() => {
-        this.loading = false;
-      });
-    },
     backTrace() {
       this.loading = true;
       // 硬编码股票代码为"512170.SHH"
@@ -126,11 +206,37 @@ export default defineComponent({
         data: this.backtrace.form
       }).then(response => {
         // 处理响应数据
-        console.log(response.data);
+        this.backtrace.response = response.data;
+        // this.backtrace.tableData = response.data.back_track_stocks.filter(
+        //   (item: BackTrackStock) => item.direction !== 0
+        // );
+        this.backtrace.balances = response.data.balances;
+        this.backtrace.balances.forEach(balance => {
+          balance.stocks = response.data.back_track_stocks.filter(
+            (item: BackTrackStock) => item.balance_id === balance.id && item.direction !== 0
+          );
+        });
       }).finally(() => {
         this.backtrace.dialog = false;
         this.loading = false;
       });
+    },
+    formatMoney(
+      row: RowData,
+      column: TableColumnCtx<RowData>,
+      cellValue: string | number,
+      index: number
+    ): string {
+      const num = parseFloat(cellValue as string);
+      return isNaN(num) ? '0.000' : num.toFixed(3);
+    },
+    formatTradeDirection(row: RowData, column: TableColumnCtx<RowData>, cellValue: string | number) {
+      const directionMap = {
+        '-1': '卖出',
+        '0': '无交易',
+        '1': '买入'
+      };
+      return directionMap[cellValue] || '未知';
     }
   }
 });
